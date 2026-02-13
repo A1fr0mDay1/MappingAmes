@@ -1,0 +1,7 @@
+3
+100	Beardshear Hall	42.0255	-93.6450
+101	Campanile	42.0260	-93.6455
+102	Parks Library	42.0280	-93.6460
+2
+100	101	50.2	42.0256	-93.6451	Campanile Walk
+101	102	75.0	42.0265	-93.6457	Library Path

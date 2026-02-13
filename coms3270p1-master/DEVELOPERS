@@ -1,0 +1,406 @@
+Project: CS 327 Project 1 (Mapper)
+Author: John Hartnett
+Email: hartn114@iastate.edu
+
+## 1. Source Files
+
+* `mapper.c`: Part A `main()`. Calls `validate()` and prints the result.
+* `data.c`: Implements the `validate()` function for Part A.
+* `data.h`: Header file for `validate()`.
+* `graph.c`: Implements the Graph ADT functions (create, add, remove, free, etc.).
+* `graph.h`: Header file for the Graph ADT, defining `graph_t`, `node_t`, and `edge_t`.
+* `testgraph.c`: Part B `main()`. Reads from `stdin`, builds, and prints the graph. Also contains `freeCustomGraphData()` helper.
+* `testgraph.h`: Header file for Part B, defines the `poi_data_t` struct.
+* `citydata.c`: Part C `main()`. Implements all command-line operations for city data analysis.
+* `makefile`: Builds the `mapper`, `testgraph`, and `citydata` executables.
+
+## 2. Key Data Structures
+
+* `char line[1024]`: A fixed-size buffer used in `data.c` and `testgraph.c` to read lines from `stdin`.
+* `struct edge / edge_t`: Represents a directed edge. Contains a `toNode` pointer, `weight`, `void *data` (for road name), and `edge_t *next` (for the adjacency list).
+* `struct node / node_t`: Represents a node. Contains an `int id`, `void *data` (for `poi_data_t`), and `edge_t *edges` (head of the adjacency list).
+* `struct graph / graph_t`: The master graph structure. Contains `node_t **nodes` (a dynamic array of node pointers), `nodeCount`, `edgeCount`, and `nodeSpace`.
+* `struct poi_data / poi_data_t`: A custom struct to store POI data. A pointer to this struct is stored in the `node_t`'s `void *data` field.
+* `double distances[]` and `int visited[]`: Arrays used in Dijkstra's algorithm for tracking shortest paths.
+
+## 3. Function/Module Discussion
+
+### Part A
+
+* **`int main(void)`** (in `mapper.c`)
+    * Entry point for Part A.
+    * Calls `validate()` with no arguments.
+    * If `validate()` returns 0, prints `VALID` to `stdout`.
+    * If `validate()` returns non-zero, prints the line number to `stdout`.
+
+* **`int validate(void)`** (in `data.c`)
+    * **Purpose**: Reads from `stdin` and checks all formatting rules.
+    * **Logic**:
+        1.  Reads the POI count (`nPoi`) from `stdin`. Returns line `1` if not a positive integer.
+        2.  Loops `nPoi` times, reading each POI line from `stdin`.
+        3.  Uses `sscanf` with the 4-field tab-delimited format.
+        4.  Checks POI rules: digit-only ID, non-empty name, lat/lon range.
+        5.  Reads the Road count (`nRoads`) from `stdin`. Returns error line if not a positive integer.
+        6.  Loops `nRoads` times, reading each Road line from `stdin`.
+        7.  Uses `sscanf` with the 6-field tab-delimited format.
+        8.  Checks Road rules: digit-only IDs, non-empty name.
+        9.  If all checks pass, returns `0`.
+        10. If any check fails, immediately returns the current `line_num`.
+
+### Part B
+
+* **Graph API Functions** (in `graph.c`)
+    * Implements all graph manipulation functions. `addNode` handles dynamic array resizing, and `removeNode` correctly handles removing both incoming and outgoing edges.
+* **`int main(void)`** (in `testgraph.c`)
+    * Entry point for Part B.
+    * **Logic**:
+        1.  Calls `createGraph()`.
+        2.  Reads POI count, then loops to read the POI section, allocating `poi_data_t` structs and calling `addNode()`.
+        3.  Reads Road count, then loops to read the Road section.
+        4.  Checks if `from_id` and `to_id` nodes exist, creating them with `NULL` data if not.
+        5.  Calls `addEdge()` to create the edge, storing distance as weight and `strdup()`-ed road name as data.
+        6.  Calls `printGraph()` to output the structure to `stdout`.
+        7.  **Cleanup**: Calls `freeCustomGraphData()` (the helper in `testgraph.c`) to free all `poi_data_t` structs and road names *before* calling `freeGraph()` to free the graph structure, preventing memory leaks.
+
+### Part C
+
+* **`int main(int argc, char *argv[])`** (in `citydata.c`)
+    * Entry point for Part C.
+    * **Logic**:
+        1. If no arguments provided, calls `printUsage()` and exits.
+        2. Parses command line to find `-f <filename>` (required).
+        3. Calls `loadFileGraph()` to load and validate the data file.
+        4. Processes remaining arguments IN ORDER:
+            * `-location <name>`: Calls `findLocation()`
+            * `-diameter`: Calls `findDiameter()`
+            * `-distance <name1> <name2>`: Calls `distanceBetween()`
+            * `-roaddist <name1> <name2>`: Calls `roadDistance()`
+        5. Calls `freeGraphWithData()` to clean up all memory.
+
+* **`void printUsage(char *programName)`**
+    * **Purpose**: Displays usage information for the citydata program.
+    * **Output**: Lists all available command-line options and their syntax.
+
+* **`graph_t* loadFileGraph(char *filename)`**
+    * **Purpose**: Loads graph data from a file and validates it.
+    * **Logic**:
+        1. Opens the specified file for reading.
+        2. Redirects `stdin` to the file for validation.
+        3. Calls `validate()` to check file format.
+        4. If valid, rewinds file and reads POI section:
+            * Creates `poi_data_t` structs for each POI
+            * Adds nodes with POI data attached
+        5. Reads road section:
+            * Creates nodes for intersections if they don't exist
+            * Adds edges with road names and distances
+        6. Restores `stdin` and returns the graph.
+
+* **`double calculateDistance(double lat1, double lon1, double lat2, double lon2)`**
+    * **Purpose**: Calculates straight-line distance between two coordinates.
+    * **Algorithm**: Haversine formula for great-circle distance.
+    * **Returns**: Distance in meters.
+
+* **`node_t* findNodeByName(graph_t *graph, char *name)`**
+    * **Purpose**: Helper function to find a node by POI name.
+    * **Logic**: Iterates through all nodes, checking POI names.
+    * **Returns**: Pointer to node or NULL if not found.
+
+* **`void findLocation(graph_t *graph, char *locationName)`**
+    * **Purpose**: Implements `-location` command.
+    * **Output**: Prints latitude and longitude with 4 decimal places.
+
+* **`void findDiameter(graph_t *graph)`**
+    * **Purpose**: Implements `-diameter` command.
+    * **Algorithm**: O(n²) comparison of all POI pairs.
+    * **Logic**:
+        1. Only considers nodes with POI data (ignores intersections).
+        2. Calculates distance between every pair of POIs.
+        3. Tracks the maximum distance and corresponding nodes.
+    * **Output**: Two coordinate pairs and distance with 2 decimal places.
+
+* **`void distanceBetween(graph_t *graph, char *name1, char *name2)`**
+    * **Purpose**: Implements `-distance` command.
+    * **Logic**: Finds both POIs and calculates Haversine distance.
+    * **Output**: Distance in meters with 3 decimal places.
+
+* **`double dijkstra(graph_t *graph, int startId, int endId)`**
+    * **Purpose**: Finds shortest path between two nodes using road network.
+    * **Algorithm**: Classic Dijkstra's shortest path algorithm.
+    * **Data structures**:
+        * `distances[]`: Tracks shortest distance to each node
+        * `visited[]`: Marks processed nodes
+    * **Logic**:
+        1. Initialize all distances to infinity, start node to 0.
+        2. Main loop:
+            * Find unvisited node with minimum distance
+            * Mark as visited
+            * Update distances to all neighbors
+            * Stop early if destination reached
+        3. Return distance to destination or -1 if unreachable.
+
+* **`void roadDistance(graph_t *graph, char *name1, char *name2)`**
+    * **Purpose**: Implements `-roaddist` command.
+    * **Logic**: 
+        1. Finds POI nodes by name.
+        2. Calls `dijkstra()` to find shortest path.
+    * **Output**: Road distance in meters with 3 decimal places.
+
+* **`void freeGraphWithData(graph_t *graph)`**
+    * **Purpose**: Safely frees all memory including custom data.
+    * **Logic**:
+        1. Iterates through all nodes, freeing `poi_data_t` structs.
+        2. Iterates through all edges, freeing road name strings.
+        3. Calls `freeGraph()` to free the graph structure itself.
+
+## 4. LLM Usage
+* `graph.h` was built by giving an LLM the project instructions and Errata.
+* `testgraph.c` Used to complete Read POI and Read Roads section by giving the LLM the instructions and the rest of my current code.
+
+Here are the two specific code blocks from `testgraph.c` that handle reading the POIs and the roads. **Note**: The error handling has been corrected to call `freeCustomGraphData` to prevent memory leaks.
+
+* Using my current code and the project instructions how could I implement reading POI and Roads?
+* Here is the C code for the POI and Road reading sections for your testgraph.c file
+### Read Section
+
+```c
+    // --- 2. READ POI SECTION ---
+    for (int i = 0; i < nPoi; i++) {
+        if (fgets(line, MAX_LINE_LEN, stdin) == NULL) {
+            fprintf(stderr, "Error: File ended early in POI section\n");
+            freeCustomGraphData(graph);
+            freeGraph(graph);
+            return 1;
+        }
+        line_num++;
+
+        char poi_id_str[MAX_LINE_LEN];
+        char poi_name[MAX_LINE_LEN];
+        double lat, lon;
+
+        if (sscanf(line, "%[^\t]\t%[^\t]\t%lf\t%lf", poi_id_str, poi_name, &lat, &lon) != 4) {
+            fprintf(stderr, "Error parsing POI on line %d\n", line_num);
+            continue; // Skip this line
+        }
+
+        // Create the custom data struct
+        poi_data_t *poi_data = (poi_data_t *)malloc(sizeof(poi_data_t));
+        if (poi_data == NULL) {
+            fprintf(stderr, "Error: Malloc failed for poi_data\n");
+            freeCustomGraphData(graph);
+            freeGraph(graph);
+            return 1;
+        }
+        poi_data->name = strdup(poi_name); // strdup copies the string
+        poi_data->latitude = lat;
+        poi_data->longitude = lon;
+
+        // Add the node to the graph
+        if (addNode(graph, atol(poi_id_str), (void *)poi_data) == NULL) {
+            fprintf(stderr, "Error: Failed to add node %s\n", poi_id_str);
+            free(poi_data->name);
+            free(poi_data);
+        }
+    }
+
+    // --- 4. READ ROAD SECTION ---
+    for (int i = 0; i < numRoads; i++) {
+        if (fgets(line, MAX_LINE_LEN, stdin) == NULL) {
+            fprintf(stderr, "Error: File ended early in road section\n");
+            freeGraph(graph);
+            return 1;
+        }
+
+        line_num++;
+
+        char road_id_str[MAX_LINE_LEN];
+        char poi_id_str[MAX_LINE_LEN];
+        double distance;
+        double lat;
+        double lon;
+        char road_name[MAX_LINE_LEN];
+
+        if (sscanf(line, "%[^\t]\t%[^\t]\t%lf\t%lf\t%lf\t%[^\n]", road_id_str, poi_id_str, &distance, &lat, &lon, road_name) != 6) {
+            fprintf(stderr, "Error parsing road on line %d\n", line_num);
+            continue;
+        }
+
+        if (isnan(distance)) {
+            distance = 0.0;
+        }
+
+        long from_id = atol(road_id_str);
+        long to_id = atol(poi_id_str);
+        
+        if (getNode(graph, from_id) == NULL) {
+            if (addNode(graph, from_id, NULL) == NULL) {
+                fprintf(stderr, "Fatal: Failed to add generic node %ld (from)\n", from_id);
+                continue;
+            }
+        }
+
+        if (getNode(graph, to_id) == NULL) {
+            if (addNode(graph, to_id, NULL) == NULL) {
+                fprintf(stderr, "Fatal: Failed to add generic node %ld (to)\n", to_id);
+                continue;
+            }
+        }
+
+        char *road_name_copy = strdup(road_name);
+        if (road_name_copy == NULL) {
+             fprintf(stderr, "Error: Malloc failed for road name\n");
+             continue;
+        }
+
+        if (addEdge(graph, from_id, to_id, (float)distance, (void *)road_name_copy) == NULL) {
+            free(road_name_copy);
+        }
+    }
+```
+
+### Part C
+* Used LLM to generate the calculateDistance function with the Haversine formula for calculating great-circle distances
+    * How do I calculate the distance in meters between two latitude/longitude coordinates in these c files?
+    * To calculate the distance between two coordinates you can use the Haversine formula. Here is how you could write a function calculateDistance using the Haversine formula.
+
+* Used LLM to generate the dijkstra function
+    * Based on my current code how could I implement dijkstra's algorithm to help find distances?
+    * I'll generate dijkstra's algorithm and apply it to your `citydata.c` file for you
+
+* File I/O with stdin redirection: Used LLM for the technique to redirect stdin in loadFileGraph
+    * How can I temporarily redirect stdin to a file in C to reuse my validate() function?
+    * The LLM suggested using FILE pointer assignment and restoration
+
+Here are the specific code blocks generated with LLM assistance:
+
+### Haversine Formula (calculateDistance function)
+```c
+double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+    double lat1_rad = lat1 * M_PI / 180.0;
+    double lat2_rad = lat2 * M_PI / 180.0;
+    double dlat = (lat2 - lat1) * M_PI / 180.0;
+    double dlon = (lon2 - lon1) * M_PI / 180.0;
+    
+    // Haversine formula
+    double a = sin(dlat/2) * sin(dlat/2) + 
+               cos(lat1_rad) * cos(lat2_rad) * sin(dlon/2) * sin(dlon/2);
+    double c = 2 * atan2(sqrt(a), sqrt(1-a));
+    
+    return EARTH_RADIUS * c;
+}
+```
+
+### Dijkstra's 
+```c
+/**
+ * Dijkstra's algorithm implementation
+ */
+double dijkstra(graph_t *graph, int startId, int endId) {
+    double *distances;
+    int *visited;
+    int startIdx, endIdx;
+    int i, count;
+    double minDist;
+    int minIdx;
+    node_t *currentNode;
+    edge_t *edge;
+    int neighborIdx;
+    double alt;
+    double result;
+    
+    if (graph == NULL || graph->nodeCount == 0) {
+        return -1;
+    }
+    
+    // Allocate arrays for distances and visited flags
+    distances = (double*)malloc(sizeof(double) * graph->nodeCount);
+    visited = (int*)calloc(graph->nodeCount, sizeof(int));
+    
+    if (distances == NULL || visited == NULL) {
+        free(distances);
+        free(visited);
+        return -1;
+    }
+    
+    // Initialize all distances to infinity
+    for (i = 0; i < graph->nodeCount; i++) {
+        distances[i] = DBL_MAX;
+    }
+    
+    // Find start node index and set its distance to 0
+    startIdx = -1;
+    for (i = 0; i < graph->nodeCount; i++) {
+        if (graph->nodes[i]->id == startId) {
+            startIdx = i;
+            distances[i] = 0;
+            break;
+        }
+    }
+    
+    if (startIdx == -1) {
+        free(distances);
+        free(visited);
+        return -1;
+    }
+    
+    // Main Dijkstra loop
+    for (count = 0; count < graph->nodeCount; count++) {
+        // Find minimum distance unvisited node
+        minDist = DBL_MAX;
+        minIdx = -1;
+        
+        for (i = 0; i < graph->nodeCount; i++) {
+            if (!visited[i] && distances[i] < minDist) {
+                minDist = distances[i];
+                minIdx = i;
+            }
+        }
+        
+        if (minIdx == -1) break;  // No more reachable nodes
+        
+        visited[minIdx] = 1;
+        
+        // Check if we've reached the destination
+        if (graph->nodes[minIdx]->id == endId) {
+            break;
+        }
+        
+        currentNode = graph->nodes[minIdx];
+        
+        // Update distances to neighbors
+        edge = currentNode->edges;
+        while (edge != NULL) {
+            // Find neighbor's index
+            neighborIdx = -1;
+            for (i = 0; i < graph->nodeCount; i++) {
+                if (graph->nodes[i] == edge->toNode) {
+                    neighborIdx = i;
+                    break;
+                }
+            }
+            
+            if (neighborIdx != -1 && !visited[neighborIdx]) {
+                alt = distances[minIdx] + edge->weight;
+                if (alt < distances[neighborIdx]) {
+                    distances[neighborIdx] = alt;
+                }
+            }
+            
+            edge = edge->next;
+        }
+    }
+    
+    // Find end node and get its distance
+    result = DBL_MAX;
+    for (i = 0; i < graph->nodeCount; i++) {
+        if (graph->nodes[i]->id == endId) {
+            result = distances[i];
+            break;
+        }
+    }
+    
+    free(distances);
+    free(visited);
+    
+    return (result == DBL_MAX) ? -1 : result;
+}
+```
